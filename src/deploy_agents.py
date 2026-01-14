@@ -47,7 +47,17 @@ def main() -> None:
       # Replace _ with - and lowercase
       agent_name = base_name.lower().replace("_", "-")
 
-      #bing_conn_id = client.connections.get(os.environ["BING_CUSTOM_GROUNDING_CONNECTION_NAME"]).id
+      # Build tools list - Bing Custom Search is optional
+      tools = []
+      bing_conn_name = os.environ.get("BING_CUSTOM_GROUNDING_CONNECTION_NAME", "")
+      if bing_conn_name:
+          bing_conn_id = client.connections.get(bing_conn_name).id
+          tools.append(BingCustomSearchAgentTool(
+              bing_custom_search_preview=BingCustomSearchToolParameters(
+                  search_configurations=[BingCustomSearchConfiguration(
+                      project_connection_id=bing_conn_id)]
+              )
+          ))
 
       agent = client.agents.create_version(
           agent_name=agent_name,
@@ -64,12 +74,7 @@ def main() -> None:
                   "AZURE_OPENAI_ENDPOINT": aoai_endpoint,
                   "OPENAI_API_VERSION": openai_api_version,
               },
-              #tools=[BingCustomSearchAgentTool(
-               #  bing_custom_search_preview=BingCustomSearchToolParameters(
-                 #   search_configurations=[BingCustomSearchConfiguration(
-                 #       project_connection_id=bing_conn_id)]
-                # )
-              #)],
+              tools=tools if tools else None,
           ),
       )
       print(f"Agent '{agent_name}' created: {agent.id}")
@@ -89,7 +94,7 @@ def main() -> None:
         workflow=wf_definition,
       )
   )
-  print(f"  Workflow '{wf_name}' created: {workflow.id}")
+  print(f"Workflow '{wf_name}' created: {workflow.id}")
 
 if __name__ == "__main__":
   main()
