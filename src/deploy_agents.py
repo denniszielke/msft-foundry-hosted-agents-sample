@@ -1,6 +1,6 @@
 import os
 from azure.ai.projects import AIProjectClient
-from azure.ai.projects.models import ImageBasedHostedAgentDefinition, ProtocolVersionRecord, AgentProtocol, BingCustomSearchAgentTool, BingCustomSearchToolParameters, BingCustomSearchConfiguration
+from azure.ai.projects.models import ImageBasedHostedAgentDefinition, WorkflowAgentDefinition, ProtocolVersionRecord, AgentProtocol, BingCustomSearchAgentTool, BingCustomSearchToolParameters, BingCustomSearchConfiguration
 from azure.identity import DefaultAzureCredential
 
 from dotenv import load_dotenv
@@ -47,7 +47,7 @@ def main() -> None:
       # Replace _ with - and lowercase
       agent_name = base_name.lower().replace("_", "-")
 
-      bing_conn_id = client.connections.get(os.environ["BING_CUSTOM_GROUNDING_CONNECTION_NAME"]).id
+      #bing_conn_id = client.connections.get(os.environ["BING_CUSTOM_GROUNDING_CONNECTION_NAME"]).id
 
       agent = client.agents.create_version(
           agent_name=agent_name,
@@ -64,16 +64,32 @@ def main() -> None:
                   "AZURE_OPENAI_ENDPOINT": aoai_endpoint,
                   "OPENAI_API_VERSION": openai_api_version,
               },
-              tools=[BingCustomSearchAgentTool(
-                 bing_custom_search_preview=BingCustomSearchToolParameters(
-                    search_configurations=[BingCustomSearchConfiguration(
-                        project_connection_id=bing_conn_id)]
-                 )
-              )],
+              #tools=[BingCustomSearchAgentTool(
+               #  bing_custom_search_preview=BingCustomSearchToolParameters(
+                 #   search_configurations=[BingCustomSearchConfiguration(
+                 #       project_connection_id=bing_conn_id)]
+                # )
+              #)],
           ),
       )
       print(f"Agent '{agent_name}' created: {agent.id}")
 
+  #read workflow files from workflows directory
+  workflows_dir = os.path.join(os.path.dirname(__file__), "workflows")    
+  for wf_file in os.listdir(workflows_dir):
+    if not wf_file.endswith(".yaml"):
+      continue
+    wf_path = os.path.join(workflows_dir, wf_file)
+    with open(wf_path, "r") as f:
+      wf_definition = f.read()
+    wf_name = f"{wf_file[:-len('.yaml')]}"
+    workflow = client.agents.create_version(
+      agent_name=wf_name,
+      definition=WorkflowAgentDefinition(
+        workflow=wf_definition,
+      )
+  )
+  print(f"  Workflow '{wf_name}' created: {workflow.id}")
 
 if __name__ == "__main__":
   main()
