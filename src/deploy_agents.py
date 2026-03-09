@@ -1,6 +1,6 @@
 import os
 from azure.ai.projects import AIProjectClient
-from azure.ai.projects.models import ImageBasedHostedAgentDefinition, WorkflowAgentDefinition, ProtocolVersionRecord, AgentProtocol, BingCustomSearchAgentTool, BingCustomSearchToolParameters, BingCustomSearchConfiguration
+from azure.ai.projects.models import HostedAgentDefinition, WorkflowAgentDefinition, ProtocolVersionRecord, AgentProtocol, BingCustomSearchPreviewTool, BingCustomSearchToolParameters, BingCustomSearchConfiguration
 from azure.identity import DefaultAzureCredential
 
 from dotenv import load_dotenv
@@ -52,7 +52,7 @@ def main() -> None:
       bing_conn_name = os.environ.get("BING_CUSTOM_GROUNDING_CONNECTION_NAME", "")
       if bing_conn_name:
           bing_conn_id = client.connections.get(bing_conn_name).id
-          tools.append(BingCustomSearchAgentTool(
+          tools.append(BingCustomSearchPreviewTool(
               bing_custom_search_preview=BingCustomSearchToolParameters(
                   search_configurations=[BingCustomSearchConfiguration(
                       project_connection_id=bing_conn_id)]
@@ -62,7 +62,7 @@ def main() -> None:
       agent = client.agents.create_version(
           agent_name=agent_name,
           description=f"Hosted agent for {agent_name}",
-          definition=ImageBasedHostedAgentDefinition(
+          definition=HostedAgentDefinition(
               container_protocol_versions=protocols,
               cpu="1",
               memory="2Gi",

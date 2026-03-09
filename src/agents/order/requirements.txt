@@ -1,5 +1,8 @@
 langgraph==1.0.10
 
+langchain-openai>=0.3.0
+langchain-core>=0.3.0
+
 azure-ai-agentserver-langgraph==1.0.0b15
 
 pytest==8.4.2
