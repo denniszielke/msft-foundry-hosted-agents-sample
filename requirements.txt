@@ -1,8 +1,8 @@
-agent-framework-devui==1.0.0b260304
-agent-framework==1.0.0rc3
+agent-framework-devui==1.0.0b260107
+agent-framework==1.0.0b260107
 python-dotenv
 matplotlib
 psutil
 azure-monitor-opentelemetry-exporter==1.0.0b48
 azure-ai-agentserver-agentframework==1.0.0b15
-azure-ai-projects==2.0.0
+azure-ai-projects==2.0.0b3
