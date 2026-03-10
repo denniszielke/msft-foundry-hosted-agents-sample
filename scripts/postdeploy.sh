@@ -24,6 +24,8 @@ if [ ! -f "$ENV_FILE" ]; then
   touch "$ENV_FILE"
 fi
 
+IMAGE_TAG=$(date '+%m%d%H%M%S')
+
 for spec in "$@"; do
   IMAGE_NAME="${spec%%:*}"
   CONTEXT_PATH="${spec#*:}"
@@ -33,12 +35,12 @@ for spec in "$@"; do
     exit 1
   fi
 
-  IMAGE_TAG="$REGISTRY/$IMAGE_NAME:latest"
+  FULL_IMAGE="$REGISTRY/$IMAGE_NAME:$IMAGE_TAG"
 
-  echo "Queuing ACR build for $IMAGE_TAG from context $CONTEXT_PATH..."
+  echo "Queuing ACR build for $FULL_IMAGE from context $CONTEXT_PATH..."
   az acr build \
     --registry "${REGISTRY%%.*}" \
-    --image "$IMAGE_TAG" \
+    --image "$FULL_IMAGE" \
     "$CONTEXT_PATH"
   
   # Persist image URL into .env using a conventional variable name
@@ -47,9 +49,9 @@ for spec in "$@"; do
 
   # Remove any existing line for this var, then append the new value
   if grep -q "^${IMAGE_VAR_NAME}=" "$ENV_FILE" 2>/dev/null; then
-    sed -i "s|^${IMAGE_VAR_NAME}=.*|${IMAGE_VAR_NAME}=${IMAGE_TAG}|" "$ENV_FILE"
+    sed -i "s|^${IMAGE_VAR_NAME}=.*|${IMAGE_VAR_NAME}=${FULL_IMAGE}|" "$ENV_FILE"
   else
-    echo "${IMAGE_VAR_NAME}=${IMAGE_TAG}" >> "$ENV_FILE"
+    echo "${IMAGE_VAR_NAME}=${FULL_IMAGE}" >> "$ENV_FILE"
   fi
 done
 

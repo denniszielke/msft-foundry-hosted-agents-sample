@@ -2,7 +2,10 @@ langgraph==1.0.10
 
 azure-ai-agentserver-langgraph==1.0.0b15
 
-pytest==8.4.2
 azure-identity==1.25.1
 python-dotenv==1.1.1
+
+langchain-openai==1.1.7
+langchain-azure-ai==1.1.0b1
+
 azure-monitor-opentelemetry==1.8.1

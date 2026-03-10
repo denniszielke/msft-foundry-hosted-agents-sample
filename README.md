@@ -52,10 +52,11 @@ The glue is implemented via the `postdeploy` hooks in `azure.yaml` and the `scri
    After `azd up` completes successfully, you should have:
 
    - A `.env` file at the repo root populated with connection info and image URLs
-   - Three hosted agents created in your Azure AI project:
+   - Four hosted agents created in your Azure AI project:
      - `order-orchestrator` – Routes requests to product-search or order agents
      - `order` – Handles order placement
      - `product-search` – Generates product results based on search queries
+     - `langgraph-agents` – Three-agent majority consensus demo using LangGraph
 
 ## Included Agents
 
@@ -64,6 +65,7 @@ The glue is implemented via the `postdeploy` hooks in `azure.yaml` and the `scri
 | `order-orchestrator` | Intent router that classifies user messages and delegates to product-search or order agents | agent-framework |
 | `order` | Handles product ordering with tools for placing orders, checking order status, and cancellation | LangGraph |
 | `product-search` | Generates fictional product results based on user search queries using Bing Custom Search | agent-framework |
+| `langgraph-agents` | Three-agent majority consensus flow: one generates an answer, one provides a contrarian view, a tiebreaker picks, and majority wins | LangGraph |
 
 ## How the `postdeploy` Hook Works
 
@@ -79,7 +81,7 @@ hooks:
     - name: build-and-push-container-images
       description: Build and push container images to ACR
       shell: sh
-      run: ./scripts/postdeploy.sh order-orchestrator:./src/agents/order-orchestrator order:./src/agents/order product-search:./src/agents/product-search
+      run: ./scripts/postdeploy.sh order-orchestrator:./src/agents/order-orchestrator order:./src/agents/order product-search:./src/agents/product-search langgraph-agents:./src/agents/langgraph-agents
 ```
 
 In order, it does:
@@ -94,7 +96,7 @@ In order, it does:
    - After all images are built, runs `python deploy_agents.py` in `src/`
 
 3. **`src/deploy_agents.py`** – Reads the `.env` file (via `python-dotenv`) and:
-   - Discovers all `*_IMAGE` variables (e.g., `ORDER_ORCHESTRATOR_IMAGE`, `ORDER_IMAGE`, `PRODUCT_SEARCH_IMAGE`)
+   - Discovers all `*_IMAGE` variables (e.g., `ORDER_ORCHESTRATOR_IMAGE`, `ORDER_IMAGE`, `PRODUCT_SEARCH_IMAGE`, `LANGGRAPH_AGENTS_IMAGE`)
    - Derives an agent name from each variable (e.g., `ORDER_ORCHESTRATOR_IMAGE` → `order-orchestrator`)
    - Creates or updates an **image-based hosted agent** in the Azure AI project for each image
    - Configures each agent with Bing Custom Search tool integration
@@ -120,6 +122,9 @@ src/
     product-search/
       agent.py             # Product search agent (agent-framework-based)
       Dockerfile           # Container definition
+    langgraph-agents/
+      app.py               # Three-agent majority consensus demo (LangGraph)
+      Dockerfile           # Container definition
   config/
     settings.py            # Helper for reading config from env
   workflows/
@@ -137,6 +142,7 @@ src/
       order-orchestrator:./src/agents/order-orchestrator \
       order:./src/agents/order \
       product-search:./src/agents/product-search \
+      langgraph-agents:./src/agents/langgraph-agents \
       my-new-agent:./src/agents/my-new-agent
     ```
 
