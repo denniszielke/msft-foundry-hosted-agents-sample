@@ -167,6 +167,55 @@ If you change only the container images and want to re-register agents without r
 
 This will re-create or update the hosted agents using the already-pushed images.
 
+## SDK Compatibility Notes
+
+This sample targets **`azure-ai-projects` 2.0.1** (stable). If you upgraded from a pre-release (`2.0.0b3` / `2.0.0b4`), note the following renames:
+
+| Old name (pre-release) | New name (2.0.x stable) |
+|---|---|
+| `ImageBasedHostedAgentDefinition` | `HostedAgentDefinition` |
+| `BingCustomSearchAgentTool` | `BingCustomSearchPreviewTool` |
+
+Hosted Agents and Workflow Agents are preview features. The `create_version` calls require the `foundry_features` opt-in parameter:
+
+```python
+from azure.ai.projects.models import FoundryFeaturesOptInKeys
+
+# For hosted agents
+client.agents.create_version(
+    ...,
+    foundry_features=FoundryFeaturesOptInKeys.HOSTED_AGENTS_V1_PREVIEW,
+)
+
+# For workflow agents
+client.agents.create_version(
+    ...,
+    foundry_features=FoundryFeaturesOptInKeys.WORKFLOW_AGENTS_V1_PREVIEW,
+)
+```
+
+## Hosted Agents: Networking Limitations (Preview)
+
+Hosted Agents (containerized custom code) have the following networking restrictions during preview:
+
+- **Hosted agents do NOT support private networking** with Standard Setup.
+- **They cannot be deployed into network-isolated Foundry environments.**
+
+This is explicitly documented as a preview limitation — see the [Azure AI Foundry networking docs](https://learn.microsoft.com/azure/ai-foundry/concepts/network-security-overview).
+
+### Networking Summary
+
+| Area | Status |
+|---|---|
+| BYO VNet with Private Endpoints | ✅ GA |
+| No public egress | ✅ GA |
+| Access to private Azure PaaS | ✅ GA |
+| On-prem via VPN / ExpressRoute | ✅ GA |
+| Cross-region VNet | ❌ Not supported |
+| Inbound private IP to agent runtime | ❌ Not supported |
+| Managed VNet | ⚠️ Preview |
+| **Hosted agents + private networking** | **❌ Not supported** |
+
 ## Cleanup
 
 To remove all provisioned resources:
