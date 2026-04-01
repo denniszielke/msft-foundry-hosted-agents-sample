@@ -4,13 +4,13 @@ trigger:
   id: trigger_tripmate
   actions:
     - kind: InvokeAzureAgent
-      id: action-concierge
+      id: action-concierge-route
       agent:
         name: travel-concierge
       input:
         messages: =System.LastMessage
       output:
-        autoSend: false
+        autoSend: true
         responseObject: Local.ConciergeResult
     - kind: ConditionGroup
       id: action-route
@@ -47,12 +47,7 @@ trigger:
                 messages: =System.LastMessage
               output:
                 autoSend: true
-      elseActions:
-        - kind: SendActivity
-          id: action-direct-response
-          activity:
-            type: message
-            text: =Text(Local.ConciergeResult.direct_response)
+      elseActions: []
 id: ""
 name: tripmate
-description: "TripMate AI — multi-agent travel planning workflow"
+description: "TripMate AI travel planning workflow"

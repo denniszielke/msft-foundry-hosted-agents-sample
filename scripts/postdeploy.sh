@@ -33,7 +33,9 @@ for spec in "$@"; do
     exit 1
   fi
 
-  IMAGE_TAG="$REGISTRY/$IMAGE_NAME:latest"
+  # Use a unique tag (timestamp) so the platform pulls the new image
+  BUILD_TAG="$(date +%Y%m%d%H%M%S)"
+  IMAGE_TAG="$REGISTRY/$IMAGE_NAME:$BUILD_TAG"
 
   echo "Queuing ACR build for $IMAGE_TAG from context $CONTEXT_PATH..."
   az acr build \

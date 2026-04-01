@@ -16,13 +16,13 @@ from dotenv import load_dotenv
 from pydantic import BaseModel, Field
 
 from agent_framework import (
-    AgentRunResponse,
-    AgentRunResponseUpdate,
-    AgentThread,
+    AgentResponse,
+    AgentResponseUpdate,
+    AgentSession,
     BaseAgent,
-    ChatMessage,
-    Role,
-    TextContent,
+    Content,
+    Message,
+    ResponseStream,
 )
 from agent_framework.azure import AzureOpenAIChatClient
 from azure.ai.agentserver.agentframework import from_agent_framework
@@ -121,19 +121,36 @@ class TripScoutAgent(BaseAgent):
             api_version="2024-05-01-preview",
         )
 
-    async def run(
+    def run(
         self,
-        messages: str | ChatMessage | list[str] | list[ChatMessage] | None = None,
+        messages=None,
         *,
-        thread: AgentThread | None = None,
+        stream: bool = False,
+        session: AgentSession | None = None,
         **kwargs: Any,
-    ) -> AgentRunResponse:
-        normalized = self._normalize_messages(messages)
+    ):
+        if stream:
+            async def _gen():
+                result = await self._run_impl(messages)
+                if result.messages:
+                    msg = result.messages[0]
+                    yield AgentResponseUpdate(contents=msg.contents, role=msg.role)
+
+            def _finalizer(updates):
+                return AgentResponse(messages=[])
+
+            return ResponseStream(_gen(), finalizer=_finalizer)
+        return self._run_impl(messages)
+
+    async def _run_impl(self, messages=None):
+        from agent_framework import normalize_messages
+
+        normalized = normalize_messages(messages) if messages else []
         user_text = normalized[-1].text if normalized else "a weekend getaway"
 
         llm_messages = [
-            ChatMessage(role=Role.SYSTEM, text=_SYSTEM_PROMPT),
-            ChatMessage(role=Role.USER, text=user_text),
+            Message(role="system", text=_SYSTEM_PROMPT),
+            Message(role="user", text=user_text),
         ]
         response = await self._chat_client.get_response(messages=llm_messages)
 
@@ -144,6 +161,10 @@ class TripScoutAgent(BaseAgent):
         else:
             raw = str(response)
 
+        response_message = self._build_response_message(raw)
+        return AgentResponse(messages=[response_message])
+
+    def _build_response_message(self, raw: str) -> Message:
         parsed = json.loads(raw.strip())
         result = TripSearchResult(
             destination=parsed.get("destination", "Unknown"),
@@ -153,45 +174,27 @@ class TripScoutAgent(BaseAgent):
             estimated_budget=parsed.get("estimated_budget", "N/A"),
         )
 
-        # Build human-readable summary
-        lines = [f"🗺️ **Travel options for {result.destination}**\n"]
-        lines.append("✈️ **Flights:**")
+        lines = [f"Travel options for {result.destination}\n"]
+        lines.append("Flights:")
         for f in result.flights:
-            lines.append(f"  • {f.airline} — {f.departure}→{f.arrival} — {f.price}")
-        lines.append("\n🏨 **Hotels:**")
+            lines.append(f"  - {f.airline} {f.departure} to {f.arrival} {f.price}")
+        lines.append("\nHotels:")
         for h in result.hotels:
-            lines.append(f"  • {h.name} ({'⭐' * h.rating}) — {h.price_per_night}/night — {h.location}")
-        lines.append("\n🎯 **Activities:**")
+            lines.append(f"  - {h.name} ({h.rating} stars) {h.price_per_night}/night {h.location}")
+        lines.append("\nActivities:")
         for a in result.activities:
-            lines.append(f"  • {a.name} — {a.price} ({a.duration})")
-        lines.append(f"\n💰 **Estimated budget:** {result.estimated_budget}")
+            lines.append(f"  - {a.name} {a.price} ({a.duration})")
+        lines.append(f"\nEstimated budget: {result.estimated_budget}")
 
         output = TripScoutOutput(
             human_readable="\n".join(lines),
             result=result,
         )
 
-        response_message = ChatMessage(
-            role=Role.ASSISTANT,
-            contents=[TextContent(text=output.model_dump_json())],
+        return Message(
+            role="assistant",
+            contents=[Content.from_text(output.model_dump_json())],
         )
-
-        if thread is not None:
-            await self._notify_thread_of_new_messages(thread, normalized, response_message)
-
-        return AgentRunResponse(messages=[response_message])
-
-    async def run_stream(
-        self,
-        messages: str | ChatMessage | list[str] | list[ChatMessage] | None = None,
-        *,
-        thread: AgentThread | None = None,
-        **kwargs: Any,
-    ) -> AsyncIterable[AgentRunResponseUpdate]:
-        full = await self.run(messages=messages, thread=thread, **kwargs)
-        if full.messages:
-            msg = full.messages[0]
-            yield AgentRunResponseUpdate(contents=msg.contents, role=msg.role)
 
 
 # ---------------------------------------------------------------------------
@@ -199,11 +202,24 @@ class TripScoutAgent(BaseAgent):
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
+    import argparse
     workspace_root = Path(__file__).resolve().parent.parent.parent.parent
     load_dotenv(dotenv_path=workspace_root / ".env", override=True)
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--query", type=str, default=None, help="Run a single query and exit")
+    args = parser.parse_args()
 
     agent = TripScoutAgent(
         name="trip-scout",
         description="Searches flights, hotels, and activities for travel planning.",
     )
-    from_agent_framework(agent).run()
+
+    if args.query:
+        import asyncio
+        result = asyncio.run(agent._run_impl(args.query))
+        for msg in result.messages:
+            for c in msg.contents:
+                print(c.text if hasattr(c, 'text') else c)
+    else:
+        from_agent_framework(agent).run()

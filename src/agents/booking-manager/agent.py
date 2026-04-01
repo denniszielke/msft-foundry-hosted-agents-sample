@@ -249,10 +249,21 @@ def build_agent() -> "StateGraph":
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--query", type=str, default=None, help="Run a single query and exit")
+    args = parser.parse_args()
+
     try:
         agent = build_agent()
-        adapter = from_langgraph(agent)
-        adapter.run()
+        if args.query:
+            from langchain_core.messages import HumanMessage
+            result = agent.invoke({"messages": [HumanMessage(content=args.query)]})
+            for msg in result["messages"]:
+                print(f"{msg.type}: {msg.content}")
+        else:
+            adapter = from_langgraph(agent)
+            adapter.run()
     except Exception:
         logger.exception("Booking Manager Agent encountered an error while running")
         raise

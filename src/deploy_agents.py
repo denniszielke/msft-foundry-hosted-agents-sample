@@ -17,7 +17,7 @@ from azure.identity import DefaultAzureCredential
 
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(override=True)
 
 def get_env(name: str, required: bool = True, default: str | None = None) -> str:
   value = os.getenv(name, default)
@@ -32,20 +32,22 @@ def get_env(name: str, required: bool = True, default: str | None = None) -> str
 
 CONCIERGE_SYSTEM_PROMPT = """\
 You are the Travel Concierge for TripMate AI, a friendly travel planning assistant.
-Classify the user message into exactly one intent and respond with valid JSON only.
+Classify the user's intent and respond with valid JSON only.
 
 Respond ONLY with valid JSON (no markdown, no extra text):
-{"next_agent": "<agent>", "reason": "<short reason>", "input": "<original user text>", "direct_response": "<your response or empty string>"}
+{"next_agent": "<agent>", "reason": "<short reason>", "response": "<message for the user>"}
 
 <agent> must be one of: trip-scout | booking-manager | none
 
-Rules:
+Routing rules:
 • trip-scout — searching destinations, flights, hotels, activities, comparing travel options, planning trips
-• booking-manager — booking, modifying, cancelling reservations, checking booking status, anything about an existing booking
+• booking-manager — booking, modifying, cancelling reservations, checking booking status
 • none — greetings, general travel tips, small talk, or questions you can answer directly
 
-When next_agent is "none", populate direct_response with a helpful, friendly answer.
-When next_agent is "trip-scout" or "booking-manager", leave direct_response as an empty string.
+The response field:
+• When routing to trip-scout or booking-manager, write a brief acknowledgement like
+  "Let me search for flights to Barcelona for you!" or "I'll check on that booking right away."
+• When next_agent is "none", write a full friendly answer to the user's question.
 """
 
 CONCIERGE_OUTPUT_SCHEMA = {
@@ -54,22 +56,18 @@ CONCIERGE_OUTPUT_SCHEMA = {
         "next_agent": {
             "type": "string",
             "enum": ["trip-scout", "booking-manager", "none"],
-            "description": "The agent to route to, or none for direct response."
+            "description": "The agent to route to next, or none if done."
         },
         "reason": {
             "type": "string",
             "description": "Short reason for the routing decision."
         },
-        "input": {
+        "response": {
             "type": "string",
-            "description": "The original user text to forward."
-        },
-        "direct_response": {
-            "type": "string",
-            "description": "Concierge's direct response when next_agent is none."
+            "description": "Human-friendly message to show the user."
         }
     },
-    "required": ["next_agent", "reason", "input", "direct_response"],
+    "required": ["next_agent", "reason", "response"],
     "additionalProperties": False
 }
 

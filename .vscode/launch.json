@@ -1,0 +1,39 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Trip Scout Agent",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/src/agents/trip-scout/agent.py",
+      "args": ["--query", "${input:agentQuery}"],
+      "console": "integratedTerminal",
+      "envFile": "${workspaceFolder}/.env"
+    },
+    {
+      "name": "Booking Manager Agent",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/src/agents/booking-manager/agent.py",
+      "args": ["--query", "${input:agentQuery}"],
+      "console": "integratedTerminal",
+      "envFile": "${workspaceFolder}/.env"
+    },
+    {
+      "name": "Deploy Agents",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/src/deploy_agents.py",
+      "console": "integratedTerminal",
+      "envFile": "${workspaceFolder}/.env"
+    }
+  ],
+  "inputs": [
+    {
+      "id": "agentQuery",
+      "type": "promptString",
+      "description": "Enter your question for the agent",
+      "default": "Find me flights and hotels in Barcelona for June"
+    }
+  ]
+}
