@@ -1,0 +1,58 @@
+kind: workflow
+trigger:
+  kind: OnConversationStart
+  id: trigger_tripmate
+  actions:
+    - kind: InvokeAzureAgent
+      id: action-concierge
+      agent:
+        name: travel-concierge
+      input:
+        messages: =System.LastMessage
+      output:
+        autoSend: false
+        responseObject: Local.ConciergeResult
+    - kind: ConditionGroup
+      id: action-route
+      conditions:
+        - condition: |-
+            =If(
+                Text(Local.ConciergeResult.next_agent) = "trip-scout",
+                true,
+                false
+            )
+          id: route-trip-scout
+          actions:
+            - kind: InvokeAzureAgent
+              id: action-trip-scout
+              agent:
+                name: trip-scout
+              input:
+                messages: =System.LastMessage
+              output:
+                autoSend: true
+        - condition: |-
+            =If(
+                Text(Local.ConciergeResult.next_agent) = "booking-manager",
+                true,
+                false
+            )
+          id: route-booking-manager
+          actions:
+            - kind: InvokeAzureAgent
+              id: action-booking-manager
+              agent:
+                name: booking-manager
+              input:
+                messages: =System.LastMessage
+              output:
+                autoSend: true
+      elseActions:
+        - kind: SendActivity
+          id: action-direct-response
+          activity:
+            type: message
+            text: =Text(Local.ConciergeResult.direct_response)
+id: ""
+name: tripmate
+description: "TripMate AI — multi-agent travel planning workflow"

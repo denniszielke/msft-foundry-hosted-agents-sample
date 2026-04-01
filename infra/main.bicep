@@ -72,7 +72,7 @@ param aiProjectDeploymentsJson string = '[{"name":"gpt-4.1-mini","model":{"name"
 param aiProjectConnectionsJson string = '[]'
 
 @description('List of resources to create and connect to the AI project')
-param aiProjectDependentResourcesJson string = '[]'
+param aiProjectDependentResourcesJson string = '[{"resource":"bing_custom_grounding"}]'
 
 var aiProjectDeployments = json(aiProjectDeploymentsJson)
 var aiProjectConnections = json(aiProjectConnectionsJson)

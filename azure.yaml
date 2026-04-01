@@ -1,6 +1,6 @@
-name: agentic-demo-env
+name: tripmate-ai
 metadata:
-  template: openai-plugin-fastapi@0.0.1-beta
+  template: tripmate-ai@1.0.0
 hooks:
   postdeploy:
     - name: copy-env-file
@@ -10,6 +10,6 @@ hooks:
     - name: build-and-push-container-images
       description: Build and push container images to ACR
       shell: sh
-      run: ./scripts/postdeploy.sh order-orchestrator:./src/agents/order-orchestrator order:./src/agents/order product-search:./src/agents/product-search
+      run: ./scripts/postdeploy.sh trip-scout:./src/agents/trip-scout booking-manager:./src/agents/booking-manager
 infra:
   provider: bicep

@@ -1,14 +1,40 @@
-# Azure AI Hosted Agents with `azd`
+# TripMate AI — Multi-Agent Travel Planning Assistant
 
-This sample shows how to provision Azure resources, build container images, and deploy **Azure AI hosted agents** using **Azure Developer CLI (`azd`)**.
+This sample shows how to build a **multi-agent travel planning assistant** using **Azure AI Foundry** and **Azure Developer CLI (`azd`)**, showcasing three different agent types:
 
-Everything (infra, images, and agents) is wired together so that a single `azd up`:
+| Agent | Type | Container? | Framework |
+|-------|------|-----------|-----------|
+| `travel-concierge` | **Declarative Prompt Agent** | No | None (SDK-defined via `PromptAgentDefinition`) |
+| `trip-scout` | **Hosted Agent** | Yes | agent-framework |
+| `booking-manager` | **Hosted Agent** | Yes | LangGraph |
+| `tripmate` | **Workflow** | No | Foundry Workflow YAML |
 
-- Creates the Azure AI Foundry project and supporting resources using Bicep
+A single `azd up`:
+
+- Creates the Azure AI Foundry project, Bing Custom Search, and supporting resources using Bicep
 - Builds and pushes agent container images to Azure Container Registry (ACR)
-- Creates/updates hosted agents in the Azure AI project based on those images
+- Creates a declarative prompt agent (travel concierge) — no container needed
+- Creates hosted agents for trip search and booking management
+- Deploys a workflow that orchestrates the full conversation
 
-The glue is implemented via the `postdeploy` hooks in `azure.yaml` and the `scripts/postdeploy.sh` + `src/deploy_agents.py` scripts.
+## Scenario
+
+```
+User: "I want to plan a weekend trip to Barcelona in June"
+  → Travel Concierge (prompt agent) classifies as trip-scout
+  → Trip Scout searches flights, hotels, activities → returns options
+
+User: "Book the Hilton and the morning Lufthansa flight"
+  → Travel Concierge classifies as booking-manager
+  → Booking Manager checks availability → confirms booking → returns itinerary
+
+User: "Can I change my hotel to the W?"
+  → Travel Concierge classifies as booking-manager
+  → Booking Manager looks up booking → modifies → returns updated itinerary
+
+User: "Hello!"
+  → Travel Concierge classifies as none → responds directly with a greeting
+```
 
 ## Prerequisites
 
@@ -33,7 +59,7 @@ The glue is implemented via the `postdeploy` hooks in `azure.yaml` and the `scri
    # When prompted, choose a new or existing environment name
    ```
 
-3. **Provision infrastructure and run post-deploy hooks:**
+3. **Provision infrastructure and deploy agents:**
 
    From the repo root:
 
@@ -43,8 +69,8 @@ The glue is implemented via the `postdeploy` hooks in `azure.yaml` and the `scri
 
    During `azd up` the following happens:
 
-   - Bicep templates in `infra/` are deployed (AI project, ACR, storage, monitoring, Bing Custom Search, etc.).
-   - `azd` writes an environment-specific `.env` file into `.azure/<env-name>/.env` with outputs like `AZURE_AI_PROJECT_ENDPOINT`, `AZURE_CONTAINER_REGISTRY_ENDPOINT`, etc.
+   - Bicep templates in `infra/` are deployed (AI project, ACR, Bing Custom Search, storage, monitoring, etc.).
+   - `azd` writes an environment-specific `.env` file into `.azure/<env-name>/.env` with outputs like `AZURE_AI_PROJECT_ENDPOINT`, `AZURE_CONTAINER_REGISTRY_ENDPOINT`, `BING_CUSTOM_GROUNDING_CONNECTION_NAME`, etc.
    - The **postdeploy hooks** defined in `azure.yaml` run automatically (see below).
 
 4. **Verify deployment:**
@@ -52,18 +78,31 @@ The glue is implemented via the `postdeploy` hooks in `azure.yaml` and the `scri
    After `azd up` completes successfully, you should have:
 
    - A `.env` file at the repo root populated with connection info and image URLs
-   - Three hosted agents created in your Azure AI project:
-     - `order-orchestrator` – Routes requests to product-search or order agents
-     - `order` – Handles order placement
-     - `product-search` – Generates product results based on search queries
+   - Four agents created in your Azure AI project:
+     - `travel-concierge` – Declarative prompt agent that classifies intent and routes
+     - `trip-scout` – Searches flights, hotels, and activities via Bing
+     - `booking-manager` – Handles booking, modification, and cancellation
+     - `tripmate` – Workflow that orchestrates the conversation
 
 ## Included Agents
 
-| Agent | Description | Framework |
-|-------|-------------|-----------|
-| `order-orchestrator` | Intent router that classifies user messages and delegates to product-search or order agents | agent-framework |
-| `order` | Handles product ordering with tools for placing orders, checking order status, and cancellation | LangGraph |
-| `product-search` | Generates fictional product results based on user search queries using Bing Custom Search | agent-framework |
+### Travel Concierge (Declarative Prompt Agent)
+
+Defined entirely via `PromptAgentDefinition` in `deploy_agents.py` — no container, no Dockerfile. Uses a system prompt with `TextResponseFormatJsonSchema` to classify user intent into structured JSON and route to the appropriate specialist agent. Can also respond directly to greetings and general travel questions.
+
+### Trip Scout (agent-framework Hosted Agent)
+
+An agent-framework-based container agent that searches for flights, hotels, and activities based on user travel queries. Uses Bing Custom Search for grounding. Returns structured results with prices, ratings, and an estimated trip budget.
+
+### Booking Manager (LangGraph Hosted Agent)
+
+A LangGraph-based container agent with a stateful tool-calling loop. Provides five booking tools: `check_availability`, `create_booking`, `modify_booking`, `get_booking`, and `cancel_booking`. The LLM decides which tools to call, executes them, and loops until the booking flow is complete.
+
+### TripMate Workflow
+
+A Foundry Workflow YAML (`tripmate.yaml`) that orchestrates the conversation:
+1. Invokes the travel concierge to classify user intent
+2. Conditionally routes to trip-scout, booking-manager, or responds directly
 
 ## How the `postdeploy` Hook Works
 
@@ -79,7 +118,7 @@ hooks:
     - name: build-and-push-container-images
       description: Build and push container images to ACR
       shell: sh
-      run: ./scripts/postdeploy.sh order-orchestrator:./src/agents/order-orchestrator order:./src/agents/order product-search:./src/agents/product-search
+      run: ./scripts/postdeploy.sh trip-scout:./src/agents/trip-scout booking-manager:./src/agents/booking-manager
 ```
 
 In order, it does:
@@ -94,10 +133,11 @@ In order, it does:
    - After all images are built, runs `python deploy_agents.py` in `src/`
 
 3. **`src/deploy_agents.py`** – Reads the `.env` file (via `python-dotenv`) and:
-   - Discovers all `*_IMAGE` variables (e.g., `ORDER_ORCHESTRATOR_IMAGE`, `ORDER_IMAGE`, `PRODUCT_SEARCH_IMAGE`)
-   - Derives an agent name from each variable (e.g., `ORDER_ORCHESTRATOR_IMAGE` → `order-orchestrator`)
-   - Creates or updates an **image-based hosted agent** in the Azure AI project for each image
-   - Configures each agent with Bing Custom Search tool integration
+   - Creates the **travel concierge** as a `PromptAgentDefinition` (declarative prompt agent — no container)
+   - Discovers all `*_IMAGE` variables (e.g., `TRIP_SCOUT_IMAGE`, `BOOKING_MANAGER_IMAGE`)
+   - Creates or updates a **hosted agent** for each container image
+   - Configures Bing Custom Search tool integration when `BING_CUSTOM_GROUNDING_CONNECTION_NAME` is set
+   - Deploys all workflow YAML files from `src/workflows/` as **workflow agents**
 
 Net result: every time you run `azd up` (or `azd deploy` that triggers the postdeploy hooks), your hosted agents are rebuilt and redeployed from source.
 
@@ -109,34 +149,30 @@ infra/                     # Bicep templates for infra + AI project
 scripts/
   postdeploy.sh            # Builds images, pushes to ACR, runs deploy_agents.py
 src/
-  deploy_agents.py         # Creates/updates hosted agents based on *_IMAGE env vars
+  deploy_agents.py         # Creates all agents: prompt, hosted, and workflow
   agents/
-    order/
-      agent.py             # Order agent (LangGraph-based)
+    trip-scout/
+      agent.py             # Travel search agent (agent-framework)
       Dockerfile           # Container definition
-    order-orchestrator/
-      agent.py             # Orchestrator agent (agent-framework-based)
-      Dockerfile           # Container definition
-    product-search/
-      agent.py             # Product search agent (agent-framework-based)
+    booking-manager/
+      agent.py             # Booking management agent (LangGraph)
       Dockerfile           # Container definition
   config/
     settings.py            # Helper for reading config from env
   workflows/
-    sample.yaml            # Sample workflow configuration
+    tripmate.yaml          # TripMate workflow orchestration
 ```
 
 ## Customizing Agents and Images
 
-- **Add another agent**
+- **Add another hosted agent**
   - Create a new folder under `src/agents/<your-agent-name>/` with an `agent.py` and `Dockerfile`.
   - Update the `build-and-push-container-images` hook in `azure.yaml`, passing an additional argument, e.g.:
 
     ```yaml
     run: ./scripts/postdeploy.sh \
-      order-orchestrator:./src/agents/order-orchestrator \
-      order:./src/agents/order \
-      product-search:./src/agents/product-search \
+      trip-scout:./src/agents/trip-scout \
+      booking-manager:./src/agents/booking-manager \
       my-new-agent:./src/agents/my-new-agent
     ```
 
@@ -169,30 +205,11 @@ This will re-create or update the hosted agents using the already-pushed images.
 
 ## SDK Compatibility Notes
 
-This sample targets **`azure-ai-projects` 2.0.1** (stable). If you upgraded from a pre-release (`2.0.0b3` / `2.0.0b4`), note the following renames:
+This sample targets **`azure-ai-projects` 2.0.1** (stable). It uses:
 
-| Old name (pre-release) | New name (2.0.x stable) |
-|---|---|
-| `ImageBasedHostedAgentDefinition` | `HostedAgentDefinition` |
-| `BingCustomSearchAgentTool` | `BingCustomSearchPreviewTool` |
-
-Hosted Agents and Workflow Agents are preview features. The `create_version` calls require the `foundry_features` opt-in parameter:
-
-```python
-from azure.ai.projects.models import FoundryFeaturesOptInKeys
-
-# For hosted agents
-client.agents.create_version(
-    ...,
-    foundry_features=FoundryFeaturesOptInKeys.HOSTED_AGENTS_V1_PREVIEW,
-)
-
-# For workflow agents
-client.agents.create_version(
-    ...,
-    foundry_features=FoundryFeaturesOptInKeys.WORKFLOW_AGENTS_V1_PREVIEW,
-)
-```
+- `PromptAgentDefinition` — declarative prompt agents (GA, no opt-in needed)
+- `HostedAgentDefinition` — containerized hosted agents (requires `FoundryFeaturesOptInKeys.HOSTED_AGENTS_V1_PREVIEW`)
+- `WorkflowAgentDefinition` — workflow agents (requires `FoundryFeaturesOptInKeys.WORKFLOW_AGENTS_V1_PREVIEW`)
 
 ## Hosted Agents: Networking Limitations (Preview)
 

@@ -1,6 +1,18 @@
 import os
 from azure.ai.projects import AIProjectClient
-from azure.ai.projects.models import HostedAgentDefinition, WorkflowAgentDefinition, ProtocolVersionRecord, AgentProtocol, BingCustomSearchPreviewTool, BingCustomSearchToolParameters, BingCustomSearchConfiguration, FoundryFeaturesOptInKeys
+from azure.ai.projects.models import (
+    HostedAgentDefinition,
+    WorkflowAgentDefinition,
+    PromptAgentDefinition,
+    PromptAgentDefinitionTextOptions,
+    ProtocolVersionRecord,
+    AgentProtocol,
+    BingCustomSearchPreviewTool,
+    BingCustomSearchToolParameters,
+    BingCustomSearchConfiguration,
+    FoundryFeaturesOptInKeys,
+    TextResponseFormatJsonSchema,
+)
 from azure.identity import DefaultAzureCredential
 
 from dotenv import load_dotenv
@@ -14,8 +26,55 @@ def get_env(name: str, required: bool = True, default: str | None = None) -> str
   return value
 
 
+# ---------------------------------------------------------------------------
+# Travel Concierge – declarative prompt agent (no container)
+# ---------------------------------------------------------------------------
+
+CONCIERGE_SYSTEM_PROMPT = """\
+You are the Travel Concierge for TripMate AI, a friendly travel planning assistant.
+Classify the user message into exactly one intent and respond with valid JSON only.
+
+Respond ONLY with valid JSON (no markdown, no extra text):
+{"next_agent": "<agent>", "reason": "<short reason>", "input": "<original user text>", "direct_response": "<your response or empty string>"}
+
+<agent> must be one of: trip-scout | booking-manager | none
+
+Rules:
+• trip-scout — searching destinations, flights, hotels, activities, comparing travel options, planning trips
+• booking-manager — booking, modifying, cancelling reservations, checking booking status, anything about an existing booking
+• none — greetings, general travel tips, small talk, or questions you can answer directly
+
+When next_agent is "none", populate direct_response with a helpful, friendly answer.
+When next_agent is "trip-scout" or "booking-manager", leave direct_response as an empty string.
+"""
+
+CONCIERGE_OUTPUT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "next_agent": {
+            "type": "string",
+            "enum": ["trip-scout", "booking-manager", "none"],
+            "description": "The agent to route to, or none for direct response."
+        },
+        "reason": {
+            "type": "string",
+            "description": "Short reason for the routing decision."
+        },
+        "input": {
+            "type": "string",
+            "description": "The original user text to forward."
+        },
+        "direct_response": {
+            "type": "string",
+            "description": "Concierge's direct response when next_agent is none."
+        }
+    },
+    "required": ["next_agent", "reason", "input", "direct_response"],
+    "additionalProperties": False
+}
+
+
 def main() -> None:
-  # These come from azd / Bicep outputs and the container images we built
   project_endpoint = get_env("AZURE_AI_PROJECT_ENDPOINT", required=True)
   model_deployment_name = get_env("AZURE_AI_MODEL_DEPLOYMENT_NAME", required=True, default="o4-mini")
   aoai_endpoint = get_env("AZURE_OPENAI_ENDPOINT", required=True)
@@ -28,11 +87,32 @@ def main() -> None:
       credential=credential,
   )
 
-  # Shared container protocol versions for hosted agents
+  # -----------------------------------------------------------------------
+  # 1. Travel Concierge (declarative prompt agent – no container)
+  # -----------------------------------------------------------------------
+  concierge = client.agents.create_version(
+      agent_name="travel-concierge",
+      description="TripMate AI Travel Concierge — classifies intent and routes to specialist agents",
+      definition=PromptAgentDefinition(
+          model=model_deployment_name,
+          instructions=CONCIERGE_SYSTEM_PROMPT,
+          temperature=0.1,
+          text=PromptAgentDefinitionTextOptions(
+              format=TextResponseFormatJsonSchema(
+                  name="concierge_routing",
+                  schema=CONCIERGE_OUTPUT_SCHEMA,
+                  strict=True,
+              ),
+          ),
+      ),
+  )
+  print(f"Prompt agent 'travel-concierge' created: {concierge.id}")
+
+  # -----------------------------------------------------------------------
+  # 2. Hosted agents from container images (*_IMAGE env vars)
+  # -----------------------------------------------------------------------
   protocols = [ProtocolVersionRecord(protocol=AgentProtocol.RESPONSES, version="v2")]
 
-  # Automatically discover all *_IMAGE variables in the environment
-  # and create/update a hosted agent for each.
   for key, value in os.environ.items():
       if not key.endswith("_IMAGE"):
           continue
@@ -41,13 +121,10 @@ def main() -> None:
       if not image_tag:
           continue
 
-      # Derive agent name from variable name, e.g.
-      # PRODUCT_AGENT_IMAGE -> product-agent
-      base_name = key[:-len("_IMAGE")]  # strip suffix
-      # Replace _ with - and lowercase
+      base_name = key[:-len("_IMAGE")]
       agent_name = base_name.lower().replace("_", "-")
 
-      # Build tools list - Bing Custom Search is optional
+      # Bing Custom Search tool (optional)
       tools = []
       bing_conn_name = os.environ.get("BING_CUSTOM_GROUNDING_CONNECTION_NAME", "")
       if bing_conn_name:
@@ -78,25 +155,27 @@ def main() -> None:
               tools=tools if tools else None,
           ),
       )
-      print(f"Agent '{agent_name}' created: {agent.id}")
+      print(f"Hosted agent '{agent_name}' created: {agent.id}")
 
-  #read workflow files from workflows directory
-  workflows_dir = os.path.join(os.path.dirname(__file__), "workflows")    
+  # -----------------------------------------------------------------------
+  # 3. Workflow agents from YAML files
+  # -----------------------------------------------------------------------
+  workflows_dir = os.path.join(os.path.dirname(__file__), "workflows")
   for wf_file in os.listdir(workflows_dir):
-    if not wf_file.endswith(".yaml"):
-      continue
-    wf_path = os.path.join(workflows_dir, wf_file)
-    with open(wf_path, "r") as f:
-      wf_definition = f.read()
-    wf_name = f"{wf_file[:-len('.yaml')]}"
-    workflow = client.agents.create_version(
-      agent_name=wf_name,
-      foundry_features=FoundryFeaturesOptInKeys.WORKFLOW_AGENTS_V1_PREVIEW,
-      definition=WorkflowAgentDefinition(
-        workflow=wf_definition,
+      if not wf_file.endswith(".yaml"):
+          continue
+      wf_path = os.path.join(workflows_dir, wf_file)
+      with open(wf_path, "r") as f:
+          wf_definition = f.read()
+      wf_name = wf_file[:-len(".yaml")]
+      workflow = client.agents.create_version(
+          agent_name=wf_name,
+          foundry_features=FoundryFeaturesOptInKeys.WORKFLOW_AGENTS_V1_PREVIEW,
+          definition=WorkflowAgentDefinition(
+              workflow=wf_definition,
+          ),
       )
-  )
-  print(f"Workflow '{wf_name}' created: {workflow.id}")
+      print(f"Workflow '{wf_name}' created: {workflow.id}")
 
 if __name__ == "__main__":
   main()
