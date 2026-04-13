@@ -7,9 +7,9 @@ hooks:
       description: Copy environment file from azd environment folder
       shell: sh
       run: cp .azure/$AZURE_ENV_NAME/.env ./
-    - name: build-and-push-container-images
-      description: Build and push container images to ACR
+    - name: deploy-agents
+      description: Build container images and deploy all agents to Foundry
       shell: sh
-      run: ./scripts/postdeploy.sh trip-scout:./src/agents/trip-scout booking-manager:./src/agents/booking-manager
+      run: pip3 install azure-ai-projects azure-identity python-dotenv && cd src && python3 deploy_agents.py
 infra:
   provider: bicep
