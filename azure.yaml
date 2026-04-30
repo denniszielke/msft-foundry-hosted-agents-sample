@@ -10,6 +10,11 @@ hooks:
     - name: deploy-agents
       description: Build container images and deploy all agents to Foundry
       shell: sh
-      run: pip3 install azure-ai-projects azure-identity python-dotenv && cd src && python3 deploy_agents.py
+      run: |
+        python3 -m venv .venv
+        . .venv/bin/activate
+        pip install --quiet --upgrade pip
+        pip install --quiet azure-ai-projects azure-identity python-dotenv
+        cd src && python3 deploy_agents.py
 infra:
   provider: bicep
