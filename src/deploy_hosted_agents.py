@@ -1,18 +1,19 @@
 """Build container images and deploy hosted agents to Azure AI Foundry."""
 
-import os
-
 from azure.ai.projects.models import (
     HostedAgentDefinition,
     ProtocolVersionRecord,
     AgentProtocol,
-    BingCustomSearchPreviewTool,
-    BingCustomSearchToolParameters,
-    BingCustomSearchConfiguration,
 )
 
 from agents import discover_hosted_agents
-from deploy_helpers import build_image, get_client, get_env
+from deploy_helpers import (
+    assign_azure_ai_user_role,
+    build_image,
+    get_client,
+    get_env,
+)
+from deploy_toolbox import TOOLBOX_NAME
 
 
 def deploy() -> None:
@@ -23,27 +24,26 @@ def deploy() -> None:
     aoai_endpoint = get_env("AZURE_OPENAI_ENDPOINT")
     openai_api_version = get_env("OPENAI_API_VERSION", default="2024-05-01-preview")
     registry = get_env("AZURE_CONTAINER_REGISTRY_ENDPOINT")
+    project_arm_id = get_env("AZURE_AI_PROJECT_ID", required=False, default="") or ""
 
-    protocols = [ProtocolVersionRecord(protocol=AgentProtocol.RESPONSES, version="v2")]
+    protocols = [ProtocolVersionRecord(protocol=AgentProtocol.RESPONSES, version="1.0.0")]
 
-    # Bing Custom Search tool (optional, shared across hosted agents)
-    tools = []
-    bing_conn_name = os.environ.get("BING_CUSTOM_GROUNDING_CONNECTION_NAME", "")
-    if bing_conn_name:
-        bing_conn_id = client.connections.get(bing_conn_name).id
-        tools.append(BingCustomSearchPreviewTool(
-            bing_custom_search_preview=BingCustomSearchToolParameters(
-                search_configurations=[BingCustomSearchConfiguration(
-                    project_connection_id=bing_conn_id)]
-            )
-        ))
+    toolbox_endpoint = f"{project_endpoint}/toolboxes/{TOOLBOX_NAME}/mcp?api-version=v1"
 
+    # Inside containers, use the new SDK env var names. We also keep the legacy
+    # AZURE_AI_* names for any code paths still reading them.
+    # NOTE: FOUNDRY_* and AGENT_* are reserved env var prefixes injected by the
+    # hosted agent platform — do not set them here.
     hosted_env = {
+        "MODEL_DEPLOYMENT_NAME": model_deployment_name,
         "AZURE_AI_PROJECT_ENDPOINT": project_endpoint,
         "AZURE_AI_MODEL_DEPLOYMENT_NAME": model_deployment_name,
         "AZURE_OPENAI_CHAT_DEPLOYMENT_NAME": model_deployment_name,
         "AZURE_OPENAI_ENDPOINT": aoai_endpoint,
         "OPENAI_API_VERSION": openai_api_version,
+        # Avoid the platform-reserved FOUNDRY_ prefix for our own values.
+        "TOOLBOX_NAME": TOOLBOX_NAME,
+        "TOOLBOX_MCP_ENDPOINT": toolbox_endpoint,
     }
 
     for config in discover_hosted_agents():
@@ -63,12 +63,43 @@ def deploy() -> None:
                 memory=config.memory,
                 image=image_tag,
                 environment_variables=env_vars,
-                tools=tools if tools else None,
             ),
+            metadata={"enableVnextExperience": "true"},
             headers={"Foundry-Features": "HostedAgents=V1Preview"},
         )
         print(f"Hosted agent '{config.name}' created: {agent.id}")
 
+        # Grant the agent's dedicated Entra identity Azure AI User at project scope
+        # so it can call models and reach the toolbox MCP endpoint.
+        principal_id = _extract_principal_id(agent)
+        if principal_id and project_arm_id:
+            assign_azure_ai_user_role(principal_id, project_arm_id)
+        elif not principal_id:
+            print(f"  WARNING: could not find agent identity principal for '{config.name}'.")
+        elif not project_arm_id:
+            print("  WARNING: AZURE_AI_PROJECT_ID not set — skipping RBAC assignment.")
+
+
+def _extract_principal_id(agent_version) -> str | None:
+    """Best-effort extraction of the agent's Entra identity principal ID."""
+    for attr in ("identity", "agent_identity", "system_assigned_identity"):
+        identity = getattr(agent_version, attr, None)
+        if identity is None:
+            continue
+        for sub in ("principal_id", "principalId", "object_id", "objectId"):
+            value = getattr(identity, sub, None)
+            if not value and isinstance(identity, dict):
+                value = identity.get(sub)
+            if value:
+                return value
+    as_dict = getattr(agent_version, "as_dict", None)
+    if callable(as_dict):
+        data = as_dict()
+        identity = data.get("identity") or data.get("agentIdentity") or {}
+        return identity.get("principalId") or identity.get("principal_id")
+    return None
+
 
 if __name__ == "__main__":
     deploy()
+

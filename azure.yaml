@@ -14,7 +14,7 @@ hooks:
         python3 -m venv .venv
         . .venv/bin/activate
         pip install --quiet --upgrade pip
-        pip install --quiet azure-ai-projects azure-identity python-dotenv
+        pip install --quiet -r src/requirements.txt
         cd src && python3 deploy_agents.py
 infra:
   provider: bicep

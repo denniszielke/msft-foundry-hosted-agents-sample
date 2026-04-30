@@ -72,7 +72,7 @@ param aiProjectDeploymentsJson string = '[{"name":"gpt-4.1-mini","model":{"name"
 param aiProjectConnectionsJson string = '[]'
 
 @description('List of resources to create and connect to the AI project')
-param aiProjectDependentResourcesJson string = '[{"resource":"bing_custom_grounding"}]'
+param aiProjectDependentResourcesJson string = '[]'
 
 var aiProjectDeployments = json(aiProjectDeploymentsJson)
 var aiProjectConnections = json(aiProjectConnectionsJson)
@@ -132,7 +132,7 @@ module aiProject 'core/ai/ai-project.bicep' = {
 // Resources
 //output AZURE_RESOURCE_GROUP string = resourceGroupName
 //output AZURE_AI_ACCOUNT_ID string = aiProject.outputs.accountId
-//output AZURE_AI_PROJECT_ID string = aiProject.outputs.projectId
+output AZURE_AI_PROJECT_ID string = aiProject.outputs.projectId
 //output AZURE_AI_FOUNDRY_PROJECT_ID string = aiProject.outputs.projectId
 //output AZURE_AI_ACCOUNT_NAME string = aiProject.outputs.aiServicesAccountName
 //output AZURE_AI_PROJECT_NAME string = aiProject.outputs.projectName
@@ -157,6 +157,7 @@ output AZURE_CONTAINER_REGISTRY_ENDPOINT string = aiProject.outputs.dependentRes
 output BING_CUSTOM_GROUNDING_CONNECTION_NAME string = aiProject.outputs.dependentResources.bing_custom_grounding.connectionName
 output BING_CUSTOM_GROUNDING_NAME string = aiProject.outputs.dependentResources.bing_custom_grounding.name
 output BING_CUSTOM_GROUNDING_CONNECTION_ID string = aiProject.outputs.dependentResources.bing_custom_grounding.connectionId
+output BING_CUSTOM_GROUNDING_CONFIG_INSTANCE_NAME string = aiProject.outputs.dependentResources.bing_custom_grounding.configInstanceName
 
 // Azure AI Search
 //output AZURE_AI_SEARCH_CONNECTION_NAME string = aiProject.outputs.dependentResources.search.connectionName
