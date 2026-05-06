@@ -29,9 +29,6 @@
       "aiProjectConnectionsJson": {
         "value": "${AI_PROJECT_CONNECTIONS=[]}"
       },
-      "aiProjectDependentResourcesJson": {
-        "value": "${AI_PROJECT_DEPENDENT_RESOURCES=[]}"
-      },
       "enableMonitoring": {
         "value": "${ENABLE_MONITORING=true}"
       },

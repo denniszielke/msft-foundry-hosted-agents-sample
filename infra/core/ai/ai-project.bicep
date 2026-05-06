@@ -42,18 +42,18 @@ var hasStorageConnectionInConfig = length(filter(additionalDependentResources, c
 var hasAcrConnection = length(filter(additionalDependentResources, conn => conn.resource == 'registry')) > 0
 var hasSearchConnectionInConfig = length(filter(additionalDependentResources, conn => conn.resource == 'azure_ai_search')) > 0
 var hasBingConnection = length(filter(additionalDependentResources, conn => conn.resource == 'bing_grounding')) > 0
-var hasBingCustomConnection = length(filter(additionalDependentResources, conn => conn.resource == 'bing_custom_grounding')) > 0
-
-// Always deploy AI Search and Storage (required for AI Search)
+// Always deploy AI Search and Storage (required for AI Search) and Bing Custom Grounding
 var hasSearchConnection = true
 var hasStorageConnection = true
+var hasBingCustomConnection = true
 
 // Extract connection names from ai.yaml for each resource type
 var storageConnectionName = hasStorageConnectionInConfig ? filter(additionalDependentResources, conn => conn.resource == 'storage')[0].connectionName : 'storage-connection'
 var acrConnectionName = hasAcrConnection ? filter(additionalDependentResources, conn => conn.resource == 'registry')[0].connectionName : ''
 var searchConnectionName = hasSearchConnectionInConfig ? filter(additionalDependentResources, conn => conn.resource == 'azure_ai_search')[0].connectionName : 'azure-ai-search-connection'
 var bingConnectionName = hasBingConnection ? filter(additionalDependentResources, conn => conn.resource == 'bing_grounding')[0].connectionName : ''
-var bingCustomConnectionName = hasBingCustomConnection ? filter(additionalDependentResources, conn => conn.resource == 'bing_custom_grounding')[0].connectionName : ''
+var hasBingCustomConfig = length(filter(additionalDependentResources, conn => conn.resource == 'bing_custom_grounding')) > 0
+var bingCustomConnectionName = hasBingCustomConfig ? filter(additionalDependentResources, conn => conn.resource == 'bing_custom_grounding')[0].connectionName : 'bing-custom-grounding-connection'
 
 // Enable monitoring via Log Analytics and Application Insights
 module logAnalytics '../monitor/loganalytics.bicep' = if (enableMonitoring) {
@@ -307,6 +307,7 @@ output dependentResources object = {
     name: (hasBingCustomConnection) ? bingCustomGrounding!.outputs.bingCustomGroundingName : ''
     connectionName: (hasBingCustomConnection) ? bingCustomGrounding!.outputs.bingCustomGroundingConnectionName : ''
     connectionId: (hasBingCustomConnection) ? bingCustomGrounding!.outputs.bingCustomGroundingConnectionId : ''
+    configInstanceName: (hasBingCustomConnection) ? bingCustomGrounding!.outputs.bingCustomGroundingConfigInstanceName : ''
   }
   search: {
     serviceName: hasSearchConnection ? azureAiSearch!.outputs.searchServiceName : ''

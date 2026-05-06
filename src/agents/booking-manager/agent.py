@@ -1,10 +1,12 @@
+import asyncio
 import os
 import logging
 
 from dotenv import load_dotenv
-from langchain.chat_models import init_chat_model
-from langchain_core.messages import SystemMessage, ToolMessage
+import httpx
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.tools import tool
+from langchain_openai import ChatOpenAI
 from langgraph.graph import (
     END,
     START,
@@ -14,7 +16,13 @@ from langgraph.graph import (
 from typing_extensions import Literal
 from azure.identity import DefaultAzureCredential, get_bearer_token_provider
 
-from azure.ai.agentserver.langgraph import from_langgraph
+from azure.ai.agentserver.responses import (
+    CreateResponse,
+    ResponseContext,
+    ResponsesAgentServerHost,
+    ResponsesServerOptions,
+    TextResponse,
+)
 from azure.monitor.opentelemetry import configure_azure_monitor
 
 logger = logging.getLogger(__name__)
@@ -24,16 +32,29 @@ load_dotenv()
 if os.getenv("APPLICATIONINSIGHTS_CONNECTION_STRING"):
     configure_azure_monitor(enable_live_metrics=True, logger_name="__main__")
 
-deployment_name = os.getenv("AZURE_AI_MODEL_DEPLOYMENT_NAME")
+deployment_name = os.environ.get("MODEL_DEPLOYMENT_NAME") or os.environ["AZURE_AI_MODEL_DEPLOYMENT_NAME"]
+project_endpoint = os.environ.get("FOUNDRY_PROJECT_ENDPOINT") or os.environ["AZURE_AI_PROJECT_ENDPOINT"]
+
+_token_provider = get_bearer_token_provider(
+    DefaultAzureCredential(), "https://ai.azure.com/.default"
+)
+
+
+class _AzureTokenAuth(httpx.Auth):
+    """Inject a fresh Entra token on every request to the Foundry OpenAI endpoint."""
+
+    def auth_flow(self, request):
+        request.headers["Authorization"] = f"Bearer {_token_provider()}"
+        yield request
+
 
 try:
-    credential = DefaultAzureCredential()
-    token_provider = get_bearer_token_provider(
-        credential, "https://cognitiveservices.azure.com/.default"
-    )
-    llm = init_chat_model(
-        f"azure_openai:{deployment_name}",
-        azure_ad_token_provider=token_provider,
+    llm = ChatOpenAI(
+        base_url=f"{project_endpoint}/openai/v1",
+        api_key="placeholder",  # overridden by _AzureTokenAuth
+        model=deployment_name,
+        use_responses_api=True,
+        http_client=httpx.Client(auth=_AzureTokenAuth()),
     )
 except Exception:
     logger.exception("Booking Manager Agent failed to start")
@@ -248,6 +269,50 @@ def build_agent() -> "StateGraph":
 # Entrypoint
 # ---------------------------------------------------------------------------
 
+graph = build_agent()
+
+app = ResponsesAgentServerHost(
+    options=ResponsesServerOptions(default_fetch_history_count=20)
+)
+
+
+@app.response_handler
+async def handle(
+    request: CreateResponse,
+    context: ResponseContext,
+    cancellation_signal: asyncio.Event,
+):
+    async def run_graph():
+        try:
+            history = await context.get_history()
+        except Exception:
+            history = []
+        user_input = await context.get_input_text() or ""
+
+        lc_messages: list = []
+        for item in history:
+            if hasattr(item, "content"):
+                for c in item.content:
+                    if hasattr(c, "text") and c.text:
+                        if item.role == "user":
+                            lc_messages.append(HumanMessage(content=c.text))
+                        else:
+                            lc_messages.append(AIMessage(content=c.text))
+        lc_messages.append(HumanMessage(content=user_input))
+
+        result = await graph.ainvoke({"messages": lc_messages})
+        raw = result["messages"][-1].content
+        if isinstance(raw, list):
+            yield "".join(
+                block.get("text", "") if isinstance(block, dict) else str(block)
+                for block in raw
+            )
+        else:
+            yield raw or ""
+
+    return TextResponse(context, request, text=run_graph())
+
+
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
@@ -255,15 +320,12 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     try:
-        agent = build_agent()
         if args.query:
-            from langchain_core.messages import HumanMessage
-            result = agent.invoke({"messages": [HumanMessage(content=args.query)]})
+            result = graph.invoke({"messages": [HumanMessage(content=args.query)]})
             for msg in result["messages"]:
                 print(f"{msg.type}: {msg.content}")
         else:
-            adapter = from_langgraph(agent)
-            adapter.run()
+            app.run()
     except Exception:
         logger.exception("Booking Manager Agent encountered an error while running")
         raise

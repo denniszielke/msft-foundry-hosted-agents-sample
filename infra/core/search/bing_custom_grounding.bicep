@@ -30,12 +30,19 @@ resource bingCustomSearch 'Microsoft.Bing/accounts@2020-06-10' = {
   location: 'global'
   tags: tags
   sku: {
-    name: 'G1'
+    name: 'G2'
   }
   properties: {
     statisticsEnabled: false
   }
-  kind: 'Bing.CustomGrounding'
+  kind: 'Bing.GroundingCustomSearch'
+}
+
+// Default custom search configuration instance (required by the toolbox web search tool)
+resource bingCustomSearchConfig 'Microsoft.Bing/accounts/customSearchConfigurations@2025-05-01-preview' = {
+  parent: bingCustomSearch
+  name: 'default'
+  properties: {}
 }
 
 // Role assignment to allow AI project to use Bing Search
@@ -80,3 +87,4 @@ output bingCustomGroundingName string = bingCustomSearch.name
 output bingCustomGroundingConnectionName string = aiSearchConnection.outputs.connectionName
 output bingCustomGroundingResourceId string = bingCustomSearch.id
 output bingCustomGroundingConnectionId string = aiSearchConnection.outputs.connectionId
+output bingCustomGroundingConfigInstanceName string = bingCustomSearchConfig.name

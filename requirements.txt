@@ -1,8 +1,13 @@
 agent-framework-devui==1.0.0b260330
-agent-framework==1.0.0rc6
+agent-framework-core
+agent-framework-openai
+agent-framework-foundry
+agent-framework-foundry-hosting
+agent-framework-orchestrations
 python-dotenv==1.2.2
 matplotlib==3.10.8
 psutil==7.2.2
 azure-monitor-opentelemetry-exporter==1.0.0b49
-azure-ai-agentserver-agentframework==1.0.0b17
-azure-ai-projects==2.0.1
+azure-ai-agentserver-responses
+azure-ai-agentserver-core
+azure-ai-projects>=2.1.0
