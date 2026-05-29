@@ -14,8 +14,7 @@ class Settings:
     """Application settings loaded from environment variables."""
 
     # Azure AI Agent Service
-    PROJECT_ENDPOINT: str = os.getenv("PROJECT_ENDPOINT", "")
-    PROJECT_API_KEY: str = os.getenv("PROJECT_API_KEY", "")
+    PROJECT_ENDPOINT: str = os.getenv("AZURE_AI_PROJECT_ENDPOINT", "")
 
     # Application Insights
     APPLICATIONINSIGHTS_CONNECTION_STRING: Optional[str] = os.getenv(
@@ -28,8 +27,6 @@ class Settings:
         missing = []
         if not cls.PROJECT_ENDPOINT:
             missing.append("PROJECT_ENDPOINT")
-        if not cls.PROJECT_API_KEY:
-            missing.append("PROJECT_API_KEY")
 
         if missing:
             raise ValueError(f"Missing required environment variables: {', '.join(missing)}")

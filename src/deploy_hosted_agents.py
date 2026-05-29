@@ -82,7 +82,7 @@ def deploy() -> None:
 
 def _extract_principal_id(agent_version) -> str | None:
     """Best-effort extraction of the agent's Entra identity principal ID."""
-    for attr in ("identity", "agent_identity", "system_assigned_identity"):
+    for attr in ("blueprint", "instance_identity", "identity", "agent_identity", "system_assigned_identity"):
         identity = getattr(agent_version, attr, None)
         if identity is None:
             continue
@@ -95,8 +95,12 @@ def _extract_principal_id(agent_version) -> str | None:
     as_dict = getattr(agent_version, "as_dict", None)
     if callable(as_dict):
         data = as_dict()
-        identity = data.get("identity") or data.get("agentIdentity") or {}
-        return identity.get("principalId") or identity.get("principal_id")
+        for key in ("blueprint", "instance_identity", "identity", "agentIdentity"):
+            identity = data.get(key)
+            if identity:
+                value = identity.get("principal_id") or identity.get("principalId")
+                if value:
+                    return value
     return None
 
 

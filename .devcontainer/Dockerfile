@@ -1,5 +1,5 @@
 ARG VARIANT=bookworm
-ARG VERSION=3.12
+ARG VERSION=3.13
 FROM --platform=amd64 mcr.microsoft.com/devcontainers/python:${VERSION}-${VARIANT}
 
 RUN export DEBIAN_FRONTEND=noninteractive \
