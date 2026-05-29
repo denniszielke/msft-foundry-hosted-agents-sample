@@ -4,6 +4,10 @@ from azure.ai.projects.models import (
     PromptAgentDefinition,
     PromptAgentDefinitionTextOptions,
     TextResponseFormatJsonSchema,
+    AgentEndpoint,
+    AgentEndpointProtocol,
+    AgentCard,
+    AgentCardSkill,
 )
 
 from deploy_helpers import get_client, get_env
@@ -71,7 +75,40 @@ def deploy() -> None:
             ),
         ),
     )
-    print(f"Prompt agent 'travel-concierge' created: {concierge.id}")
+
+    endpoint_config = AgentEndpoint(
+        protocols=[
+            AgentEndpointProtocol.RESPONSES,
+            AgentEndpointProtocol.A2A,
+        ],
+    )
+
+    agent_card = AgentCard(
+        description="TripMate AI Travel Concierge — classifies intent and routes to specialist agents",
+        version="1.0",
+        skills=[
+            AgentCardSkill(
+                id="intent-routing",
+                name="Intent Routing",
+                description="Classifies user intent and routes to trip-scout or booking-manager",
+            ),
+        ],
+    )
+
+    patched_agent = client.beta.agents.patch_agent_details(
+        agent_name="travel-concierge",
+        agent_endpoint=endpoint_config,
+        agent_card=agent_card,
+    )
+
+    endpoint = get_env("AZURE_AI_PROJECT_ENDPOINT").rstrip("/")
+    agent_name = "travel-concierge"
+    a2a_base = f"{endpoint}/agents/{agent_name}/endpoint/protocols/a2a"
+    card_url = f"{a2a_base}/agentCard/v0.3"
+
+    print(f"\nPrompt agent '{agent_name}' created: {concierge.id}")
+    print(f"A2A base path: {a2a_base}")
+    print(f"Agent card URL: {card_url}")
 
 
 if __name__ == "__main__":
