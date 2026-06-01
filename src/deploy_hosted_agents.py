@@ -4,6 +4,10 @@ from azure.ai.projects.models import (
     HostedAgentDefinition,
     ProtocolVersionRecord,
     AgentProtocol,
+    AgentEndpoint,
+    AgentEndpointProtocol,
+    AgentCard,
+    AgentCardSkill,
 )
 
 from agents import discover_hosted_agents
@@ -14,6 +18,58 @@ from deploy_helpers import (
     get_env,
 )
 from deploy_toolbox import TOOLBOX_NAME
+
+
+# Agent card definitions keyed by agent name
+AGENT_CARDS: dict[str, AgentCard] = {
+    "booking-manager": AgentCard(
+        description="Manages bookings, modifications, and cancellations for travel reservations",
+        version="1.0",
+        skills=[
+            AgentCardSkill(
+                id="check-availability",
+                name="Check Availability",
+                description="Check flight and hotel availability for given dates",
+            ),
+            AgentCardSkill(
+                id="create-booking",
+                name="Create Booking",
+                description="Book flights and hotels for a trip",
+            ),
+            AgentCardSkill(
+                id="modify-booking",
+                name="Modify Booking",
+                description="Change dates, hotels, or flights on an existing booking",
+            ),
+            AgentCardSkill(
+                id="cancel-booking",
+                name="Cancel Booking",
+                description="Cancel an existing travel booking",
+            ),
+        ],
+    ),
+    "trip-scout": AgentCard(
+        description="Searches for flights, hotels, and activities based on user travel queries",
+        version="1.0",
+        skills=[
+            AgentCardSkill(
+                id="flight-search",
+                name="Flight Search",
+                description="Find available flights to a destination with pricing",
+            ),
+            AgentCardSkill(
+                id="hotel-search",
+                name="Hotel Search",
+                description="Find hotels at a destination with pricing and ratings",
+            ),
+            AgentCardSkill(
+                id="activity-search",
+                name="Activity Search",
+                description="Discover things to do and local experiences at a destination",
+            ),
+        ],
+    ),
+}
 
 
 def deploy() -> None:
@@ -69,6 +125,25 @@ def deploy() -> None:
         )
         print(f"Hosted agent '{config.name}' created: {agent.id}")
 
+        # Enable A2A protocol and set agent card
+        endpoint_config = AgentEndpoint(
+            protocols=[
+                AgentEndpointProtocol.RESPONSES,
+                AgentEndpointProtocol.A2A,
+            ],
+        )
+        agent_card = AGENT_CARDS.get(config.name)
+        if agent_card:
+            client.beta.agents.patch_agent_details(
+                agent_name=config.name,
+                agent_endpoint=endpoint_config,
+                agent_card=agent_card,
+            )
+            a2a_base = f"{project_endpoint.rstrip('/')}/agents/{config.name}/endpoint/protocols/a2a"
+            print(f"  A2A enabled — card: {a2a_base}/agentCard/v0.3")
+        else:
+            print(f"  WARNING: no agent card defined for '{config.name}', skipping A2A setup.")
+
         # Grant the agent's dedicated Entra identity Azure AI User at project scope
         # so it can call models and reach the toolbox MCP endpoint.
         principal_id = _extract_principal_id(agent)
@@ -82,7 +157,7 @@ def deploy() -> None:
 
 def _extract_principal_id(agent_version) -> str | None:
     """Best-effort extraction of the agent's Entra identity principal ID."""
-    for attr in ("identity", "agent_identity", "system_assigned_identity"):
+    for attr in ("blueprint", "instance_identity", "identity", "agent_identity", "system_assigned_identity"):
         identity = getattr(agent_version, attr, None)
         if identity is None:
             continue
@@ -95,8 +170,12 @@ def _extract_principal_id(agent_version) -> str | None:
     as_dict = getattr(agent_version, "as_dict", None)
     if callable(as_dict):
         data = as_dict()
-        identity = data.get("identity") or data.get("agentIdentity") or {}
-        return identity.get("principalId") or identity.get("principal_id")
+        for key in ("blueprint", "instance_identity", "identity", "agentIdentity"):
+            identity = data.get(key)
+            if identity:
+                value = identity.get("principal_id") or identity.get("principalId")
+                if value:
+                    return value
     return None
 
 

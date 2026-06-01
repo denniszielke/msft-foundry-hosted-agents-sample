@@ -25,6 +25,7 @@ from azure.ai.agentserver.responses import (
 )
 from azure.monitor.opentelemetry import configure_azure_monitor
 
+logging.basicConfig(level=logging.WARNING)
 logger = logging.getLogger(__name__)
 
 load_dotenv()

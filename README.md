@@ -201,12 +201,15 @@ You can run individual deploy scripts or the full orchestrator without `azd up`:
 cd src
 
 # Deploy everything (prompt + hosted + workflow)
-python3 deploy_agents.py
+python deploy_agents.py
 
 # Or deploy only one type
-python3 deploy_prompt_agents.py
-python3 deploy_hosted_agents.py    # builds images on ACR + registers
-python3 deploy_workflow_agents.py
+python deploy_prompt_agents.py
+python deploy_hosted_agents.py    # builds images on ACR + registers
+python deploy_workflow_agents.py
+
+# Delete agents that are already deployed
+python delete_hosted_agents.py trip-scout booking-manager
 ```
 
 Ensure your root `.env` is up to date (run `cp .azure/$AZURE_ENV_NAME/.env ./` if needed).
